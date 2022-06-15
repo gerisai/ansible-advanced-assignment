@@ -1,0 +1,90 @@
+---
+- name: Deploy Flask Server 1
+  hosts: master
+  vars: 
+    instance_name: flask-web-1
+    sg_name: flask-web
+  roles: 
+    - flask_ec2_instance
+
+- name: Deploy Flask Server 2
+  hosts: master
+  vars: 
+    instance_name: flask-web-2
+    sg_name: flask-web
+  roles: 
+    - flask_ec2_instance
+
+- name: Deploy MySQL Server
+  hosts: master
+  vars: 
+    instance_name: mysqldb
+    sg_name: mysqldb
+  roles: 
+    - mysql_ec2_instance
+
+- name: Configure MySQL Server
+  hosts: db
+  become: true
+  roles:
+    - python
+    - mysql_db  
+
+- name: Configure Web Servers
+  hosts: web
+  vars:
+    mysql_host_name: mysqldb
+  vars_files:
+    - vars/external.yaml
+  become: true
+  roles:
+    - python
+    - flask_web
+
+- name: Deploy a loadbalancer
+  hosts: master
+  tasks:
+    - name: Deploy a SG for the ELB
+      amazon.aws.ec2_group:
+        name: flask-elb
+        description: 'SG for inbound request towards Load Balancer on port 80'
+        state: present
+        region: '{{ region }}'
+        vpc_id: '{{ vpc_id }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        aws_access_key: '{{ aws_access_key }}'
+        rules: 
+          - proto: tcp
+            ports: 
+              - 80
+            cidr_ip: 0.0.0.0/0
+            rule_desc: Allow HTTP access
+
+    - name: Fetch instance info
+      amazon.aws.ec2_instance_info:
+        aws_secret_key: '{{ aws_secret_key }}'
+        aws_access_key: '{{ aws_access_key }}'
+        region: '{{ region }}'
+        filters:
+          "tag:Name": "flask-web-*" 
+      register: web_nodes_info
+
+    - name:  Deploy AWS Classic ELB
+      amazon.aws.elb_classic_lb:
+        name: "Flask-ELB"
+        state: present
+        aws_secret_key: '{{ aws_secret_key }}'
+        aws_access_key: '{{ aws_access_key }}'
+        instance_ids:
+          - '{{ web_nodes_info.instances[0].instance_id }}'
+          - '{{ web_nodes_info.instances[1].instance_id }}'
+        subnets:
+          - '{{ web_nodes_info.instances[0].network_interfaces[0].subnet_id }}'
+        region: '{{ region }}'
+        security_group_names:
+          - flask-elb
+        listeners:
+          - protocol: http
+            load_balancer_port: 80
+            instance_port: 5000
+...

@@ -1,0 +1,35 @@
+- name: Create security group 
+  amazon.aws.ec2_group:
+    name: '{{ sg_name }}'
+    description: 'SG for inbound request towards MySQL DB on port 3606'
+    region: '{{ region }}'
+    vpc_id: '{{ vpc_id }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    aws_access_key: '{{ aws_access_key }}'
+    rules: 
+      - proto: tcp
+        ports: 
+          - 3306
+          - 22
+        cidr_ip: 0.0.0.0/0
+        rule_desc: Allow SSH and TCP Access on port 3306
+
+- name: Start an EC2 instance
+  amazon.aws.ec2_instance:
+    name: '{{ instance_name }}'
+    key_name: "AnsibleAssignment"
+    instance_type: t2.micro
+    aws_secret_key: '{{ aws_secret_key }}'
+    aws_access_key: '{{ aws_access_key }}'
+    region: '{{ region }}'
+    security_group: '{{ sg_name }}'
+    state: started
+    tags: 
+      Name: '{{ instance_name }}'
+    image_id: '{{ image_id }}'
+  register: ec2_node_info
+
+- name: Add new instance to a host group
+  add_host:
+    hostname: '{{ ec2_node_info.instances[0].network_interfaces[0].association.public_ip }}'
+    groupname: db

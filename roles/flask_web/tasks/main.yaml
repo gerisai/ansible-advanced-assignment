@@ -1,0 +1,25 @@
+- name: Install Python Flask dependencies
+  pip:
+    name: '{{ item }}'
+    state: present
+  with_items:
+    - flask
+    - flask-mysql
+
+- name: Make sure Git is installed
+  yum:
+    name: git
+    state: present
+
+- name: Create a directory for repo
+  file:
+    path: /opt/simple-webapp
+    state: directory
+
+- name: Download source code
+  git: 
+    dest: /opt/simple-webapp
+    repo: 'https://github.com/mmumshad/simple-webapp.git'
+
+- name: Start web-application
+  shell: MYSQL_DATABASE_HOST={{ groups.db[0] }} FLASK_APP=/opt/simple-webapp/app.py nohup flask run --host=0.0.0.0 &
